@@ -4,6 +4,7 @@ uvicorn[standard]
 python-multipart
 pydantic
 psycopg2
+python-jose[cryptography]
 
 # LangChain / RAG
 langchain

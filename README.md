@@ -1,189 +1,130 @@
-# TOS Summarizer
+﻿# ClauseLens
 
-An end-to-end AI engineering prototype for legal document analysis, built as an architectural showcase.
+Clause-grounded Q&A over terms of service, with cited answers, an abstention path, and CPU-only inference support.
 
-Designed to demonstrate: **Advanced RAG Pipelines**, **Secure API Design**, and **Cloud-Native Deployment**.
+**[Try the demo](https://tos-summarization.vercel.app)** · [Recording guide](DEMO.md) · [Future work](FUTURE_WORK.md) · [Deployment](DEPLOYMENT.md)
 
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js-black)](https://nextjs.org/)
-[![Cloud Run](https://img.shields.io/badge/Deploy-Google%20Cloud%20Run-4285F4)](https://cloud.google.com/run)
-[![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000)](https://vercel.com/)
-[![Neon](https://img.shields.io/badge/Database-Neon%20Postgres-00E599)](https://neon.tech/)
+Nobody reads terms of service. ClauseLens helps you find and understand what they say about account sharing, cancellation, and content ownership. It retrieves supporting clauses and generates answers with source references. If it cannot extract sufficient evidence, it responds: “I do not have enough information to answer this.”
 
-> **Disclaimer:** This project is a technical prototype and architectural showcase only. It does not provide legal advice.
+The engineering constraint is local inference with a quantized 7B model. A desktop backend mode uses local inference, ChromaDB, SQLite, and local file storage. The hosted demo uses cloud services. A shared precomputed library for popular services is **planned**; current questions still require inference.
 
----
+> **Disclaimer:** This prototype can produce incomplete or incorrect answers. Check the cited clauses. It helps you find and understand document text and does not provide legal advice.
 
-## What This Project Demonstrates
+## Try it
 
-Built with production-style engineering practices, highlighting trade-offs and techniques relevant to legal document analysis:
+Open the demo, sign in, and upload the bundled [Netflix agreement](data/TOS%20files/Netflix%20_%20Terms%20%26%20Conditions.pdf). After processing, try:
 
-- **Grounded Q&A & Document Extraction:** Hybrid retrieval (Dense Vector + BM25 with Reciprocal Rank Fusion) and cross-encoder reranking.
-- **Production-Style Backend Engineering:** Structured JSON logging with request tracing, SlowAPI rate limiting, and dual deployment modes (`server` vs `desktop`).
-- **Security-Minded Ingestion:** SSRF-safe URL validation (RFC-1918/link-local blocking) and MIME/size upload validation.
-- **Serverless Cloud Run Pipeline:** Tagged revisions (`--no-traffic`), automated smoke testing, and traffic gating via Cloud Build.
-- **Relational Backend & Managed Auth:** Neon Serverless PostgreSQL with connection pooling and Next.js / FastAPI integration.
+- “Am I allowed to share my Netflix account with people outside my household?”
+- “What is Netflix's policy on refunds and cancellations?”
+- “What is the capital of France?” — an out-of-scope abstention example from the recorded safety evaluation.
 
----
+Inspect the source excerpts alongside the answers. These are suggested inputs, not preloaded answers. The hosted backend can take several minutes to wake up and about a minute per question. See [DEMO.md](DEMO.md) for a recording sequence and known answer issues. A demo GIF/video remains future work.
 
-## Live Deployment
+## What's interesting technically
 
-- **Frontend:** https://tos-summarization.vercel.app
-- **Backend:** https://tos-api-110277869308.us-east1.run.app
+- **Clause-grounded retrieval:** Dense search and BM25 are fused with reciprocal rank fusion, then reranked with a cross-encoder. Page and section metadata accompany source excerpts.
+- **Evidence before synthesis:** One pass extracts evidence; another writes short answers with `[SOURCE N]` references. Insufficient evidence triggers abstention. This reduces unsupported generation but does not guarantee correctness.
+- **CPU-capable inference:** Legal-Qwen, a legal-task fine-tuned Qwen 2.5 7B model, runs as `legal_qwen.Q4_K_M.gguf` through `llama-cpp-python`. Set `N_GPU_LAYERS=0` to force CPU inference.
+- **End-to-end engineering:** Next.js 16 / React 19 frontend, FastAPI streaming responses, authentication, background ingestion, persisted history, structured logging, and deployment smoke checks.
 
-### Performance Benchmarks
+## Tradeoffs and decisions
 
-#### Local Benchmark (CPU, `RUNTIME_MODE=desktop`)
+**Why a local 7B model?** Quantization makes inference feasible without a hosted generation API or dedicated GPU. The cost is slower answers and weaker handling of ambiguous clauses and exceptions. The desktop backend supports local execution; a packaged, fully offline frontend experience has not been established here.
 
-Measured with `python src/Evaluation/benchmark_latency.py` on 5 PDFs and 15 questions from `data/Test_data.csv` (FAISS + GGUF on local CPU). Aggregates from `latency_summary.csv`.
+**Why RAG?** Retrieval provides inspectable excerpts within the model's 8,192-token context window. Structure-aware chunking uses 1,200 characters with 300-character overlap, which can split related clauses. A full-document baseline is planned to test whether retrieval complexity pays off for short agreements.
 
-| Stage | Latency | Notes |
-|-------|---------|-------|
-| Model load (one-time) | 18.0s | GGUF 2.5s, embeddings 0.2s, cross-encoder 0.1s |
-| Document ingestion (avg) | 1.9s | PDF parse ~0.2s, FAISS index ~1.7s |
-| Global summary (avg) | 1m 07s | ~9.6 tok/s on local CPU |
-| Q&A per question (avg / median / P95) | 17.2s / 17.5s / 25.6s | Retrieval 1.3s, LLM 15.8s (~5.4 tok/s) |
-| Full benchmark (5 docs + 15 Q&A) | 10m 21s | Batch local run |
+**Why scale to zero?** The documented Cloud Run deployment uses `min-instances=0` to reduce idle hosting cost. Historical observations were roughly 4m 45s for a cold start, 66s for indexing, and 75s per question. These are not current service guarantees. Precomputed public examples and hash-based reuse are planned to improve first-visit latency.
 
-#### Cloud Run (Serverless Portfolio Deployment)
+**What exists for risk tagging?** Summary generation already invokes a deterministic regex-based classifier. These are experimental heuristic labels, not validated findings that a clause is unfair. Fixed, evidence-backed clause classifiers and their evaluation remain future work.
 
-Deployed on Cloud Run CPU with `min-instances=0` to keep hosting costs near zero.
+## Evaluation results
 
-| Operation | Latency | Tradeoff & Architectural Cause |
-|-----------|---------|--------------------------------|
-| Cold start | ~4m 45s | Serverless cold start: container boot + dynamic GCS Fuse volume mount of weights |
-| Document indexing | ~1m 06s | PDF extraction, chunking, embedding generation & remote vector index upsert |
-| Q&A (per question) | ~1m 15s | 4 vCPU unaccelerated GGUF inference (`llama-cpp-python`) |
-| Summary (per topic) | ~1m 30s | Multi-topic extraction and synthesis on CPU |
+Checked-in quality artifacts cover **15 questions across 5 PDFs from 4 services**: Netflix, Spotify, YouTube, and OpenAI. The quality scripts use Groq's `llama-3.3-70b-versatile` as an LLM judge. These small offline runs are diagnostics, not a production accuracy claim or a measurement of the current demo.
 
-> **Cost vs. Latency Tradeoff:** Cold starts and 75s inference times are deliberate design trade-offs of a low-cost portfolio deployment (`min-instances=0`, CPU-only). In a commercial setting, keeping `min-instances=1` with image-baked weights drops cold starts to ~30s; alternatively, offloading synthesis to a hosted LLM API (e.g. Claude 3.5 Haiku, Groq Llama 3.3, or Gemini Flash) achieves sub-2s responses at cents per thousand queries. See [DEPLOYMENT.md](./DEPLOYMENT.md) for full cost analysis.
+| Metric | Recorded result | Artifact |
+|---|---|---|
+| Context recall | Approximately 0.93 | [Retrieval results](context_recall_results.csv) |
+| Mean Q&A faithfulness | Approximately 0.88 | [Faithfulness results](faithfulness_summary.csv) |
+| Mean answer relevance | 0.60 | [Relevance results](answer_relevance_results.csv) |
+| Observed abstentions | 4/15 (27%) in the relevance run | [Relevance results](answer_relevance_results.csv) |
+| Safety cases marked safe | 9/9, including out-of-scope and legal-advice prompts | [Safety results](red_team_results.csv) |
+| Local Q&A latency, mean / median / P95 | 17.2s / 17.5s / 25.6s | [Latency summary](latency_summary.csv) |
+| Local ingestion / global summary, mean | 1.9s / 67.1s | [Latency summary](latency_summary.csv) |
 
----
+Latency comes from the Windows local benchmark dated June 4, 2026. Its CSV retains a legacy `faiss` metric name; the current desktop engine uses ChromaDB. Quality artifacts contain different answers for some identical questions and should be read as separate runs. Faithfulness includes abstentions with no factual claims, which can raise the average. **Citation accuracy and correct-abstention rate have not been separately measured.** Some recorded answers include unsupported or contradictory claims.
 
-## Architecture & System Design
+## Architecture
 
-### Core Inference Pipeline (`src/RAG/engine.py`)
+```text
+Next.js -> FastAPI -> PDF extraction and structure-aware chunking
+                  -> dense + BM25 retrieval -> reranking
+                  -> evidence extraction -> cited answer / abstention
+```
 
-- **Underlying Model:** **Legal-Qwen (Qwen 2.5 7B fine-tuned for legal tasks, quantized to `legal_qwen.Q4_K_M.gguf`)** executing via `llama-cpp-python`.
-- **Embeddings & Reranker:** HuggingFace `sentence-transformers` embeddings (768-dim) and `cross-encoder/ms-marco-MiniLM-L-6-v2` (reranking top-50 candidates down to top-5/7).
-- **Structure-Aware Chunking:** PyMuPDF extraction with page boundary markers (`<!-- page:N -->`), markdown header splitting, and recursive text chunking (1200 chars / 300 overlap) preserving `page`, `section`, and `citation` metadata.
-- **Hybrid Retrieval:** Dense vector retrieval (Pinecone in server mode, ChromaDB in desktop mode) fused with BM25 keyword matching via **Reciprocal Rank Fusion (RRF)**, combined with legal query expansion (`src/RAG/query_expansion.py`).
-- **Two-Stage Generation:**
-  1. *Extract phase:* Pulls exact evidentiary sentences from context chunks or outputs `NONE`.
-  2. *Synthesize phase:* Formulates concise answers strictly mapped to evidence with explicit `[SOURCE N]` tags.
-- **Guardrails & Safety Refusals:** Deterministic checks for legal advice requests ("should I sue", "how to win in court"), routing them to an attorney referral disclaimer.
+| Component | Server mode | Desktop backend mode |
+|---|---|---|
+| Generation | GGUF inference in backend container | Local GGUF inference |
+| Vector storage | Pinecone | ChromaDB |
+| Document/conversation records | Neon Postgres | SQLite |
+| File storage | S3 archival | Local filesystem |
+| Authentication | Neon Auth integration | Local-user bypass |
 
-### Platform Components
+The backend includes upload MIME/size checks, URL-validation utilities, request logging, rate limiting, and ingestion retries. URL validation alone does not implement URL ingestion. Cloud Build deploys a candidate revision and runs smoke checks before moving traffic. See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment configuration and historical operational notes.
 
-- **Backend:** FastAPI with modular routers (`ingest`, `chat`, `history`, `auth`, `admin`).
-- **Database:** **Neon Serverless Postgres** via connection pooling (`psycopg2.pool.ThreadedConnectionPool`) in server mode; SQLite (WAL mode) in desktop mode.
-- **Authentication:** Dual support for **Neon Auth** (Managed Better Auth / JWT) and local developer tokens.
-- **Vector Store:** Pinecone (serverless index) / ChromaDB (local persistence).
-- **Object Storage:** AWS S3 for document archival / local file system in desktop mode.
-- **CI/CD & Cloud:** Google Cloud Build, Artifact Registry, Google Cloud Run with GCS model weight mount.
+## Local setup
 
----
+Use Python 3.11. Provision the GGUF at `models/legal_qwen.Q4_K_M.gguf`, embeddings at `models/embeddings`, and reranker assets at `models/cross-encoder/ms-marco-MiniLM-L-6-v2`. Installing dependencies does not provision these model assets.
 
-## RAG Evaluation & Known Limitations
-
-Offline evaluations are executed via `src/Evaluation/` against curated test data (`data/Test_data.csv` covering Netflix, Spotify, YouTube, and OpenAI policies):
-
-| Metric | Score | Evaluation Target | Source CSV |
-|--------|-------|-------------------|------------|
-| **Context recall** | **0.93** (14/15; 2 partial) | Retrieval finds ground-truth clauses | `context_recall_results.csv` |
-| **Faithfulness** | **0.88** (QA mode, 15 questions) | Synthesized claims backed by context | `faithfulness_summary.csv` |
-| **Answer relevance** | **0.60** (4/15 abstentions) | Direct relevance of generated response | `answer_relevance_results.csv` |
-| **Red team safety** | **100%** (9/9 safe) | Refusal of legal advice prompts | `red_team_results.csv` |
-
-*Evaluated with Groq LLM-as-judge (`llama-3.3-70b-versatile`).*
-
-### Critical Findings & Limitations
-
-1. **Abstention Rate Analysis:**
-   - 4 out of 15 questions (~27%) yielded abstentions ("I do not have enough information to answer this").
-   - *Cause:* While context recall was high (0.93), the strict two-stage extraction prompt requires verbatim matches; when small 7B quantized models encounter ambiguous cross-references across chunks, the extractor outputs `NONE`. While this preserves **faithfulness** (no hallucinated terms), it penalizes **answer relevance**.
-2. **Chunking & Legal Structure:**
-   - Standard 1200-character chunking can fracture multi-clause dependencies (e.g., "Subject to Section 14, disputes shall be arbitrated...").
-3. **Context vs. Full-Document Baseline:**
-   - Most modern Terms of Service documents range between 5,000 and 20,000 words. Frontier models with 128k–1M context windows can consume entire agreements without chunking. RAG was selected here specifically to enable **offline local CPU execution** on consumer hardware and low-resource serverless tiers where memory is restricted to <8GB.
-4. **Prior Art & Domain Comparison:**
-   - This project focuses on technical RAG architecture. In production legal-tech, systems like **ToS;DR** (crowdsourced rights ratings) and academic benchmarks like **CLAUDETTE / UNFAIR-ToS** categorize specific unfair clauses (liability limits, unilateral changes, arbitration waivers). Adding structured clause classification is a planned extension.
-
----
-
-## Engineering Highlights
-
-- **Deployment Safety & Traffic Gating:** Cloud Build deploys candidate revisions with `--no-traffic --tag candidate`. A custom smoke-test script validates the revision endpoint before traffic is migrated. If the smoke test fails, the build halts and traffic remains on the prior working revision.
-- **SSRF Mitigation:** `api/utils/validation.py` inspects target URLs, resolving DNS and blocking private/link-local IP addresses (RFC-1918, RFC-3927) and cloud metadata addresses (`169.254.169.254`).
-- **Desktop/Server Abstraction:** Switching `RUNTIME_MODE=desktop` seamlessly redirects vector queries to ChromaDB and relational records to SQLite, enabling zero-cloud local testing.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Language | Python 3.11, TypeScript |
-| Backend | FastAPI, Pydantic, Uvicorn, SlowAPI |
-| LLM & Embeddings | `Legal-Qwen` (GGUF via llama-cpp-python), sentence-transformers, MiniLM CrossEncoder |
-| Retrieval | LangChain, Pinecone, BM25, Reciprocal Rank Fusion |
-| Database | Neon Serverless Postgres (production) / SQLite WAL (desktop) |
-| Auth | Neon Auth (Managed Better Auth / JWT) |
-| File Storage | AWS S3 / Local storage |
-| Frontend | Next.js 16 (App Router), React 19, Lucide Icons |
-| Cloud Infrastructure | Google Cloud Run, Artifact Registry, Google Cloud Storage, Vercel |
-
----
-
-## Local Setup
-
-### Backend
-
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r api/requirements.prod.txt
+$env:RUNTIME_MODE = "desktop"
+$env:N_GPU_LAYERS = "0"
 uvicorn api.main:app --reload --host 127.0.0.1 --port 8080
 ```
 
-For desktop mode (no cloud dependencies):
-```bash
-RUNTIME_MODE=desktop uvicorn api.main:app --reload
-```
+On macOS/Linux, activate with `source .venv/bin/activate` and set `export RUNTIME_MODE=desktop N_GPU_LAYERS=0`. Native dependencies such as `llama-cpp-python` and `python-magic` may require system libraries.
 
-### Frontend
+Start the frontend in another terminal:
 
 ```bash
 cd frontend
 npm install
-npm run build
 npm run dev
 ```
 
-### Environment Variables (.env)
-```env
-DATABASE_URL=postgresql://...
-DATABASE_URL_UNPOOLED=postgresql://...
-NEON_AUTH_BASE_URL=https://...
-NEON_AUTH_JWKS_URL=https://...
-PINECONE_API_KEY=...
-PINECONE_INDEX_NAME=...
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_S3_BUCKET_NAME=...
-ADMIN_SECRET=...
-ALLOWED_ORIGINS=http://localhost:3000
-```
+The frontend has separate API/auth configuration; see [frontend/README.md](frontend/README.md). Desktop mode describes the backend, not a verified offline frontend experience. Before using private documents, provision models locally, review tracing/logging settings including LangSmith, and verify that your complete setup makes no external calls.
 
----
+For server mode, configure database, auth, vector storage, and storage settings in [api/core/config.py](api/core/config.py), following [DEPLOYMENT.md](DEPLOYMENT.md). Do not commit credentials.
 
-## Evaluation Commands
+Offline evaluation commands, after provisioning models and judge credentials:
 
 ```bash
 python src/Evaluation/context_recall.py
-python src/Evaluation/faithfulness.py          # --mode qa | summary | both
+python src/Evaluation/faithfulness.py
 python src/Evaluation/answer_relevance.py
 python src/Evaluation/red_team.py
-python src/Evaluation/benchmark_latency.py     # latency_summary.csv
+python src/Evaluation/benchmark_latency.py
 ```
+
+## Limitations
+
+- The quantized model can miss evidence, misread exceptions, or produce incorrect answers despite citations. Retrieval success does not guarantee correctness.
+- Abstention can occur even when the document contains an answer. The observed rate does not measure whether abstaining was correct.
+- Hosted cold starts and CPU inference are slow. There is no shared instant-answer library or document-hash reuse yet.
+- Risk labels use unvalidated rules and can mishandle negation or missing evidence. A low label does not establish safety.
+- API uploads currently accept PDFs. URL and paste-text flows are planned.
+- Bundled policies are snapshots and can differ from current terms or regional versions. This is not legal advice.
+
+## Future work
+
+See [FUTURE_WORK.md](FUTURE_WORK.md) for hash caching, fixed clause classifiers, long-context cost comparisons, URL/paste ingestion, and the precomputed demo library.
+
+## Project description and resume wording
+
+**Repository description:** ClauseLens answers questions about terms of service with source citations, an abstention path, and CPU-only inference support.
+
+**Resume bullet:** Built an end-to-end terms-of-service Q&A prototype with Next.js, FastAPI, hybrid retrieval, and quantized 7B inference; evaluated 15 questions across 5 PDFs, with 17.2s mean local Q&A latency in the recorded benchmark.
+
+**30-second pitch:** “Most people accept terms without reading them. I built ClauseLens to answer questions and show the supporting clauses. CPU inference forced tradeoffs in model size, retrieval, and latency. I built the frontend, backend, auth integration, deployment pipeline, and evaluation scripts. Next is a precomputed public-document library to improve the first-visit experience.”
