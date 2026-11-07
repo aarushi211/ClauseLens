@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LogOut, FileText, Upload, Search,
   Send, Loader2, Info, Menu, Trash2,
+  AlertTriangle, ShieldAlert, CheckCircle2,
 } from "lucide-react";
 import { getValidToken, clearTokens } from "@/lib/api";
 
@@ -31,6 +32,9 @@ interface TopicResult {
   label: string;
   summary: string;
   sources?: Source[];
+  risk_level?: "HIGH" | "MEDIUM" | "LOW" | string;
+  risk_reason?: string | null;
+  unfair_category?: string | null;
 }
 
 interface SummaryResponse {
@@ -861,55 +865,163 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  {summaryTopics.map((topic, idx) => (
-                    <div key={idx} className="glass-card" style={{ padding: "1.5rem", animation: "fadeIn 0.4s ease-out" }}>
-                      <h3 style={{
-                        fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem",
-                        color: topic.summary.includes("NOT_IN_DOCUMENT") ? "var(--text-muted)" : "white",
+                  {/* Risk Overview Banner (when analysis is available) */}
+                  {summaryTopics.length > 0 && (() => {
+                    const highCount = summaryTopics.filter(t => t.risk_level === "HIGH").length;
+                    const medCount = summaryTopics.filter(t => t.risk_level === "MEDIUM").length;
+                    const lowCount = summaryTopics.filter(t => t.risk_level === "LOW" || !t.risk_level).length;
+                    return (
+                      <div className="glass-card" style={{
+                        padding: "1rem 1.25rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: "1rem",
+                        borderLeft: highCount > 0 ? "4px solid #ef4444" : medCount > 0 ? "4px solid #f59e0b" : "4px solid #10b981",
                       }}>
-                        {topic.label}
-                      </h3>
-                      <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        {topic.summary.includes("NOT_IN_DOCUMENT")
-                          ? "This topic is not explicitly covered in the provided text."
-                          : renderCitedText(topic.summary, topic.sources)
-                        }
-                      </p>
-
-                      {topic.sources && topic.sources.length > 0 && (
-                        <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                          <p style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.25rem" }}>
-                            Source Passages
-                          </p>
-                          {topic.sources.map((src, sIdx) => {
-                            const pageLabel = `Page ${src.page}`;
-                            const sectionLabel = src.section && src.section !== "General" ? src.section : null;
-                            const preview = src.excerpt ? src.excerpt.replace(/\s+/g, " ").trim().slice(0, 80) + "…" : "";
-                            return (
-                              <details key={sIdx} style={{ background: "rgba(59,130,246,0.05)", borderRadius: "0.5rem", border: "1px solid rgba(59,130,246,0.15)", overflow: "hidden" }}>
-                                <summary style={{ cursor: "pointer", padding: "0.5rem 0.75rem", display: "flex", alignItems: "center", gap: "0.5rem", listStyle: "none" }}>
-                                  <span style={{ background: "rgba(59,130,246,0.2)", color: "var(--accent-primary)", fontWeight: 700, fontSize: "0.7rem", padding: "1px 6px", borderRadius: "4px", flexShrink: 0 }}>
-                                    {pageLabel}
-                                  </span>
-                                  {sectionLabel && (
-                                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.05)", padding: "1px 6px", borderRadius: "4px", flexShrink: 0 }}>
-                                      {sectionLabel}
-                                    </span>
-                                  )}
-                                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {preview}
-                                  </span>
-                                </summary>
-                                <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid rgba(59,130,246,0.1)", fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.6, fontStyle: "italic" }}>
-                                  &ldquo;{src.excerpt}&rdquo;
-                                </div>
-                              </details>
-                            );
-                          })}
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          {highCount > 0 ? (
+                            <ShieldAlert size={24} color="#ef4444" />
+                          ) : medCount > 0 ? (
+                            <AlertTriangle size={24} color="#f59e0b" />
+                          ) : (
+                            <CheckCircle2 size={24} color="#10b981" />
+                          )}
+                          <div>
+                            <div style={{ fontSize: "0.95rem", fontWeight: 600 }}>Clause Risk Summary</div>
+                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                              Assessed according to consumer protection benchmarks (CLAUDETTE & UNFAIR-ToS)
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                          <span style={{
+                            padding: "0.25rem 0.65rem", borderRadius: "1rem", fontSize: "0.75rem", fontWeight: 700,
+                            background: "rgba(239, 68, 68, 0.15)", color: "#f87171", border: "1px solid rgba(239, 68, 68, 0.3)"
+                          }}>
+                            {highCount} High Risk
+                          </span>
+                          <span style={{
+                            padding: "0.25rem 0.65rem", borderRadius: "1rem", fontSize: "0.75rem", fontWeight: 700,
+                            background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.3)"
+                          }}>
+                            {medCount} Medium Risk
+                          </span>
+                          <span style={{
+                            padding: "0.25rem 0.65rem", borderRadius: "1rem", fontSize: "0.75rem", fontWeight: 700,
+                            background: "rgba(16, 185, 129, 0.15)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)"
+                          }}>
+                            {lowCount} Standard
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {summaryTopics.map((topic, idx) => {
+                    const isHigh = topic.risk_level === "HIGH";
+                    const isMed = topic.risk_level === "MEDIUM";
+                    const badgeBg = isHigh ? "rgba(239, 68, 68, 0.15)" : isMed ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.1)";
+                    const badgeColor = isHigh ? "#f87171" : isMed ? "#fbbf24" : "#34d399";
+                    const badgeBorder = isHigh ? "rgba(239, 68, 68, 0.3)" : isMed ? "rgba(245, 158, 11, 0.3)" : "rgba(16, 185, 129, 0.2)";
+
+                    return (
+                      <div key={idx} className="glass-card" style={{
+                        padding: "1.5rem",
+                        animation: "fadeIn 0.4s ease-out",
+                        borderLeft: isHigh ? "4px solid #ef4444" : isMed ? "4px solid #f59e0b" : "4px solid rgba(255,255,255,0.1)",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem", gap: "0.5rem" }}>
+                          <h3 style={{
+                            fontSize: "1rem", fontWeight: 600,
+                            color: topic.summary.includes("NOT_IN_DOCUMENT") ? "var(--text-muted)" : "white",
+                          }}>
+                            {topic.label}
+                          </h3>
+                          {topic.risk_level && (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: "0.3rem",
+                              padding: "0.2rem 0.55rem", borderRadius: "1rem", fontSize: "0.7rem", fontWeight: 700,
+                              background: badgeBg, color: badgeColor, border: `1px solid ${badgeBorder}`,
+                              flexShrink: 0,
+                            }}>
+                              {isHigh && <ShieldAlert size={12} />}
+                              {isMed && <AlertTriangle size={12} />}
+                              {!isHigh && !isMed && <CheckCircle2 size={12} />}
+                              {topic.risk_level} RISK
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Unfair Category / Risk Explanation Banner */}
+                        {(topic.unfair_category || topic.risk_reason) && (isHigh || isMed) && (
+                          <div style={{
+                            padding: "0.6rem 0.85rem",
+                            borderRadius: "0.5rem",
+                            marginBottom: "0.75rem",
+                            fontSize: "0.78rem",
+                            background: isHigh ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+                            border: `1px solid ${isHigh ? "rgba(239,68,68,0.2)" : "rgba(245,158,11,0.2)"}`,
+                            color: isHigh ? "#fca5a5" : "#fde68a",
+                            display: "flex", flexDirection: "column", gap: "0.2rem",
+                          }}>
+                            {topic.unfair_category && (
+                              <span style={{ fontWeight: 700, letterSpacing: "0.02em" }}>
+                                ⚠️ {topic.unfair_category}
+                              </span>
+                            )}
+                            {topic.risk_reason && (
+                              <span style={{ opacity: 0.9 }}>
+                                {topic.risk_reason}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                          {topic.summary.includes("NOT_IN_DOCUMENT")
+                            ? "This topic is not explicitly covered in the provided text."
+                            : renderCitedText(topic.summary, topic.sources)
+                          }
+                        </p>
+
+                        {topic.sources && topic.sources.length > 0 && (
+                          <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                            <p style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.25rem" }}>
+                              Source Passages
+                            </p>
+                            {topic.sources.map((src, sIdx) => {
+                              const pageLabel = `Page ${src.page}`;
+                              const sectionLabel = src.section && src.section !== "General" ? src.section : null;
+                              const preview = src.excerpt ? src.excerpt.replace(/\s+/g, " ").trim().slice(0, 80) + "…" : "";
+                              return (
+                                <details key={sIdx} style={{ background: "rgba(59,130,246,0.05)", borderRadius: "0.5rem", border: "1px solid rgba(59,130,246,0.15)", overflow: "hidden" }}>
+                                  <summary style={{ cursor: "pointer", padding: "0.5rem 0.75rem", display: "flex", alignItems: "center", gap: "0.5rem", listStyle: "none" }}>
+                                    <span style={{ background: "rgba(59,130,246,0.2)", color: "var(--accent-primary)", fontWeight: 700, fontSize: "0.7rem", padding: "1px 6px", borderRadius: "4px", flexShrink: 0 }}>
+                                      {pageLabel}
+                                    </span>
+                                    {sectionLabel && (
+                                      <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.05)", padding: "1px 6px", borderRadius: "4px", flexShrink: 0 }}>
+                                        {sectionLabel}
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {preview}
+                                    </span>
+                                  </summary>
+                                  <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid rgba(59,130,246,0.1)", fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.6, fontStyle: "italic" }}>
+                                    &ldquo;{src.excerpt}&rdquo;
+                                  </div>
+                                </details>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   {isSummarizing && (
                     <div className="glass-card" style={{ padding: "1.5rem", opacity: 0.5 }}>

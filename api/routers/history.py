@@ -83,7 +83,10 @@ async def get_summary_history(document_id: str, user: dict = Depends(get_current
             {
                 "label": r["topic_label"],
                 "summary": r["summary_text"],
-                "sources": r["sources"]
+                "sources": r["sources"],
+                "risk_level": r.get("risk_level", "LOW") or "LOW",
+                "risk_reason": r.get("risk_reason"),
+                "unfair_category": r.get("unfair_category"),
             }
             for r in res.data
         ]

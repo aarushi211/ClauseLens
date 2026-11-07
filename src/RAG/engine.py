@@ -23,6 +23,7 @@ from src.RAG.schemas import (
 from src.RAG.processors import clean_text, convert_to_markdown, pages_to_source_text, sanitise_label
 from src.RAG.loaders import load_pdf, load_text
 from src.RAG.query_expansion import expand_search_query
+from src.RAG.risk_classifier import assess_clause_risk
 
 logger = logging.getLogger(__name__)
 
@@ -759,10 +760,32 @@ class TOSAssistant:
                 context = self._build_context(fresh)
                 summary_text, _ = self._llm_chat(system_msg, f"Topic: {label}\n\nSources:\n{context}", max_tokens=250)
                 sources = self._all_sources(fresh)
-                yield {"type": "topic_ready", "data": {"label": label, "summary": summary_text, "sources": sources}}
+                excerpts = " ".join(s.get("excerpt", "") for s in sources)
+                risk = assess_clause_risk(label, summary_text, excerpts)
+                yield {
+                    "type": "topic_ready",
+                    "data": {
+                        "label": label,
+                        "summary": summary_text,
+                        "sources": sources,
+                        "risk_level": risk["risk_level"],
+                        "risk_reason": risk["risk_reason"],
+                        "unfair_category": risk["unfair_category"],
+                    }
+                }
             except Exception as e:
                 logger.error("Topic %s failed: %s", label, e)
-                yield {"type": "topic_ready", "data": {"label": label, "summary": "Error summarizing topic.", "sources": []}}
+                yield {
+                    "type": "topic_ready",
+                    "data": {
+                        "label": label,
+                        "summary": "Error summarizing topic.",
+                        "sources": [],
+                        "risk_level": "LOW",
+                        "risk_reason": "Could not analyze clause.",
+                        "unfair_category": None,
+                    }
+                }
 
         yield {"type": "done"}
 

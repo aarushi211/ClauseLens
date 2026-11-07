@@ -105,6 +105,9 @@ async def get_summary(
                         "topic_label": data["label"],
                         "summary_text": data["summary"],
                         "sources": data["sources"],
+                        "risk_level": data.get("risk_level", "LOW"),
+                        "risk_reason": data.get("risk_reason"),
+                        "unfair_category": data.get("unfair_category"),
                     }, context=f"summary topic '{data['label']}'")
                 yield _sse(msg)
 
