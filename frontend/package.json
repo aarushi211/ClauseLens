@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@neon/auth": "^0.8.2",
     "lucide-react": "^1.14.0",
     "next": "^16.2.6",
     "react": "19.2.4",

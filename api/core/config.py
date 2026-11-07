@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     PINECONE_REGION: str = "us-east-1"
     PINECONE_DIMENSION: int = 768
 
+    DATABASE_URL: str = Field(default="")
+    DATABASE_URL_UNPOOLED: str = Field(default="")
+    NEON_AUTH_BASE_URL: str = Field(default="")
+    NEON_AUTH_JWKS_URL: str = Field(default="")
+
     SUPABASE_URL: str = Field(default="")
     SUPABASE_SERVICE_KEY: str = Field(default="")
 
@@ -129,8 +134,7 @@ class Settings(BaseSettings):
         # AWS keys still required so boto3 can be configured when a bucket is set later.
         required = {
             "PINECONE_API_KEY": self.PINECONE_API_KEY,
-            "SUPABASE_URL": self.SUPABASE_URL,
-            "SUPABASE_SERVICE_KEY": self.SUPABASE_SERVICE_KEY,
+            "DATABASE_URL": self.DATABASE_URL,
             "AWS_ACCESS_KEY_ID": self.AWS_ACCESS_KEY_ID,
             "AWS_SECRET_ACCESS_KEY": self.AWS_SECRET_ACCESS_KEY,
             "ADMIN_SECRET": self.ADMIN_SECRET,

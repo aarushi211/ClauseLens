@@ -2,3 +2,5 @@ fastapi
 uvicorn
 pydantic
 langchain-experimental
+psycopg2-binary
+python-jose[cryptography]

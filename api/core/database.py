@@ -25,12 +25,16 @@ def init_db():
         supa_admin = LocalDB(db_path)
         logger.info("Desktop mode: LocalDB (SQLite) initialised at %s", db_path)
     else:
-        if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
+        if settings.DATABASE_URL:
+            from api.core.neon_db import NeonDB
+            supa_admin = NeonDB(settings.DATABASE_URL, secret=settings.ADMIN_SECRET)
+            logger.info("Server mode: NeonDB client ready")
+        elif settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
             from supabase import create_client
             supa_admin = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
             logger.info("Server mode: Supabase client ready")
         else:
-            logger.warning("Supabase env vars not set — DB features disabled")
+            logger.warning("Database env vars not set — DB features disabled")
 
 
 def init_storage():

@@ -83,3 +83,5 @@ get-pip.py
 *.csv
 .vercel
 .env*.local
+.neon
+node_modules/
