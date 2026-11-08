@@ -516,7 +516,7 @@ export default function Dashboard() {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
-          <h2 className="heading-gradient" style={{ fontSize: "1.25rem", fontWeight: 700 }}>TOS Summarizer</h2>
+          <h2 className="heading-gradient" style={{ fontSize: "1.25rem", fontWeight: 700 }}>ClauseLens</h2>
           <button onClick={() => setSidebarOpen(false)} style={{ color: "var(--text-muted)" }}>
             <Menu size={20} />
           </button>
@@ -789,7 +789,7 @@ export default function Dashboard() {
           ) : (
 
             /* ── Active document view ── */
-            <div style={{ height: "calc(100vh - 180px)", display: "flex", flexDirection: "column" }}>
+                      <div style={{ height: "calc(100dvh - 64px - 4rem)", display: "flex", flexDirection: "column" }}>
 
               {activeTab === "summary" ? (
 

@@ -66,7 +66,10 @@ export default function AuthPage() {
 
   return (
     <main style={{
-      minHeight: "100vh",
+      position: "relative",
+      overflowY: "auto",
+      overflowX: "hidden",
+      height: "100dvh",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
@@ -97,7 +100,7 @@ export default function AuthPage() {
             className="heading-gradient"
             style={{ fontSize: "2.5rem", fontWeight: 700, marginBottom: "0.5rem" }}
           >
-            TOS Summarizer
+            ClauseLens
           </h1>
           <p className="text-muted">AI-powered legal document analysis</p>
         </div>
